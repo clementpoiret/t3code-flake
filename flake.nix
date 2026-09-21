@@ -99,11 +99,10 @@
           '';
           desktop = pkgs.runCommand "t3code-desktop-check" { } ''
             test -x ${pkgs.t3code-desktop}/bin/t3code-desktop
-            test -d ${pkgs.t3code-desktop}/share/applications
-            test -d ${pkgs.t3code-desktop}/share/icons
-            HOME="$(mktemp -d)"
-            export HOME
-            ELECTRON_RUN_AS_NODE=1 ${pkgs.t3code-desktop}/bin/t3code-desktop --version > /dev/null
+            test -x ${pkgs.t3code-desktop}/bin/t3code-desktop-unwrapped
+            ${pkgs.bash}/bin/bash -n ${pkgs.t3code-desktop}/bin/t3code-desktop
+            grep -Fx 'Exec=t3code-desktop %U' ${pkgs.t3code-desktop}/share/applications/t3code.desktop > /dev/null
+            test -f ${pkgs.t3code-desktop}/share/icons/hicolor/512x512/apps/t3code.png
             touch "$out"
           '';
         }

@@ -115,6 +115,9 @@ PR CI check, a repository writer can approve that run from the PR. No personal a
 
 The normal [CI workflow](./.github/workflows/ci.yml) runs on pushes to `main` and pull requests using native
 `ubuntu-24.04` and `ubuntu-24.04-arm` runners.
+The desktop flake check verifies the built launcher, desktop entry, and icon without running the AppImage. Its FHS
+launcher uses `bwrap`, whose UID map setup is denied inside the ARM runner's Nix build sandbox. Both native CI jobs
+still build the desktop package.
 
 ## Packaging notes
 
