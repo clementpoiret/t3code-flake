@@ -73,7 +73,7 @@ jobs:
         with:
           ref: ${{ needs.update.outputs.base_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: t3code-sources
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
@@ -104,7 +104,7 @@ jobs:
           persist-credentials: false
       - name: Confirm validated base
         run: test "$(git rev-parse HEAD)" = "${{ needs.update.outputs.base_sha }}"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: t3code-sources
       # Checks on a GITHUB_TOKEN-created PR can await approval; native builds finish above.
