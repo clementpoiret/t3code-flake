@@ -1,0 +1,132 @@
+name: Update T3 Code
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-t3code
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+      old: ${{ steps.update.outputs.old }}
+      new: ${{ steps.update.outputs.new }}
+      base_sha: ${{ steps.update.outputs.base_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Update release metadata
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          old="$(jq -r .version sources.json)"
+          nix develop --command ./scripts/update-t3code
+          new="$(jq -r .version sources.json)"
+          changed_files="$(git diff --name-only)"
+          if [[ -n "$changed_files" && "$changed_files" != sources.json ]]; then
+            printf 'updater changed unexpected files: %s\n' "$changed_files" >&2
+            exit 1
+          fi
+          if [[ -z "$changed_files" ]]; then
+            changed=false
+          else
+            changed=true
+          fi
+          git diff --exit-code -- flake.lock
+          printf 'changed=%s\nold=%s\nnew=%s\nbase_sha=%s\n' "$changed" "$old" "$new" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.update.outputs.changed == 'true'
+        with:
+          name: t3code-sources
+          path: sources.json
+          retention-days: 1
+
+  validate:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    name: Validate update (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.update.outputs.base_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: t3code-sources
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Check and build release
+        run: |
+          git diff --exit-code -- flake.lock
+          nix flake check --system "${{ matrix.system }}"
+          nix build .#t3code
+          HOME="$(mktemp -d)"
+          export HOME
+          test "$(./result/bin/t3 --version)" = "t3 v$(jq -r .version sources.json)"
+          ./result/bin/t3 --help > /dev/null
+          nix build .#t3code-desktop --no-link
+
+  propose:
+    needs: [update, validate]
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Confirm validated base
+        run: test "$(git rev-parse HEAD)" = "${{ needs.update.outputs.base_sha }}"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: t3code-sources
+      # Checks on a GITHUB_TOKEN-created PR can await approval; native builds finish above.
+      - uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          token: ${{ github.token }}
+          branch: automation/update-t3code
+          base: main
+          add-paths: sources.json
+          commit-message: "chore: update t3code to v${{ needs.update.outputs.new }}"
+          title: "chore: update t3code to v${{ needs.update.outputs.new }}"
+          body: |
+            Updates T3 Code from v${{ needs.update.outputs.old }} to v${{ needs.update.outputs.new }}.
+
+            Upstream release: https://github.com/pingdotgg/t3code/releases/tag/v${{ needs.update.outputs.new }}
+
+            Assets updated:
+            - `t3-${{ needs.update.outputs.new }}-linux-x64.tar.gz`
+            - `t3-${{ needs.update.outputs.new }}-linux-arm64.tar.gz`
+            - `T3-Code-${{ needs.update.outputs.new }}-x86_64.AppImage`
+            - `T3-Code-${{ needs.update.outputs.new }}-arm64.AppImage`
+
+            The upstream `SHA256SUMS` entries for both CLI archives were verified before calculating Nix hashes.
+
+            Validated natively on `x86_64-linux` (`ubuntu-24.04`) and `aarch64-linux` (`ubuntu-24.04-arm`): `nix flake check`, `nix build .#t3code`, `t3 --version`, `t3 --help`, and `nix build .#t3code-desktop`.

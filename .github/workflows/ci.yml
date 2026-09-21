@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke test (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Flake checks
+        run: nix flake check --system "${{ matrix.system }}"
+      - name: Build CLI and check version
+        run: |
+          nix build .#t3code
+          HOME="$(mktemp -d)"
+          export HOME
+          test "$(./result/bin/t3 --version)" = "t3 v$(jq -r .version sources.json)"
+          ./result/bin/t3 --help > /dev/null
+      - name: Build desktop package
+        run: nix build .#t3code-desktop --no-link

@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_dir"
+
+if (( $# > 1 )); then
+  printf 'usage: %s [X.Y.Z]\n' "$0" >&2
+  exit 2
+fi
+
+if (( $# == 1 )); then
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    printf 'invalid stable version: %s\n' "$1" >&2
+    exit 2
+  }
+  release_json="$(gh api "repos/pingdotgg/t3code/releases/tags/v$1")"
+else
+  release_json="$(gh api repos/pingdotgg/t3code/releases/latest)"
+fi
+
+tag="$(jq -er '.tag_name' <<< "$release_json")"
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  printf 'release has no stable vX.Y.Z tag: %s\n' "$tag" >&2
+  exit 1
+}
+jq -e '.draft == false and .prerelease == false' <<< "$release_json" > /dev/null || {
+  printf 'refusing draft or prerelease %s\n' "$tag" >&2
+  exit 1
+}
+
+version="${tag#v}"
+old_version="$(jq -er '.version' sources.json)"
+[[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  printf 'invalid version in sources.json: %s\n' "$old_version" >&2
+  exit 1
+}
+if [[ "$version" == "$old_version" ]]; then
+  printf 'T3 Code is already at v%s; no files changed.\n' "$version"
+  exit 0
+fi
+if (( $# == 0 )) && [[ "$(printf '%s\n%s\n' "$version" "$old_version" | sort -V | tail -1)" != "$version" ]]; then
+  printf 'latest upstream release v%s is older than packaged v%s\n' "$version" "$old_version" >&2
+  exit 1
+fi
+
+tmp_dir="$(mktemp -d)"
+metadata_tmp=""
+cleanup() {
+  rm -rf -- "$tmp_dir"
+  if [[ -n "$metadata_tmp" ]]; then
+    rm -f -- "$metadata_tmp"
+  fi
+}
+trap cleanup EXIT
+
+asset_url() {
+  local name="$1" url expected
+  url="$(jq -er --arg name "$name" \
+    '[.assets[] | select(.name == $name)] | if length == 1 then .[0].browser_download_url else error("missing or duplicate release asset: " + $name) end' \
+    <<< "$release_json")"
+  expected="https://github.com/pingdotgg/t3code/releases/download/$tag/$name"
+  [[ "$url" == "$expected" ]] || {
+    printf 'unexpected download URL for %s: %s\n' "$name" "$url" >&2
+    return 1
+  }
+  printf '%s\n' "$url"
+}
+
+download_asset() {
+  local name="$1" url expected_size actual_size
+  url="$(asset_url "$name")"
+  expected_size="$(jq -er --arg name "$name" '.assets[] | select(.name == $name) | .size' <<< "$release_json")"
+  curl --fail --location --retry 3 --silent --show-error --output "$tmp_dir/$name" "$url"
+  actual_size="$(stat -c %s "$tmp_dir/$name")"
+  [[ "$expected_size" == "$actual_size" && "$actual_size" -gt 0 ]] || {
+    printf 'incorrect downloaded size for %s: expected %s, got %s\n' "$name" "$expected_size" "$actual_size" >&2
+    return 1
+  }
+}
+
+cli_x64="t3-$version-linux-x64.tar.gz"
+cli_arm64="t3-$version-linux-arm64.tar.gz"
+desktop_x64="T3-Code-$version-x86_64.AppImage"
+desktop_arm64="T3-Code-$version-arm64.AppImage"
+
+# Check the entire asset set before any downloads or repository writes.
+for asset in "$cli_x64" "$cli_arm64" SHA256SUMS "$desktop_x64" "$desktop_arm64"; do
+  asset_url "$asset" > /dev/null
+done
+
+download_asset SHA256SUMS
+for asset in "$cli_x64" "$cli_arm64"; do
+  download_asset "$asset"
+  mapfile -t checksum_lines < <(awk -v name="$asset" '$2 == name { print }' "$tmp_dir/SHA256SUMS")
+  if (( ${#checksum_lines[@]} != 1 )); then
+    printf 'expected exactly one upstream SHA256SUMS entry for %s\n' "$asset" >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "${checksum_lines[0]}" | (cd "$tmp_dir" && sha256sum --check --status); then
+    printf 'upstream SHA256SUMS verification failed for %s\n' "$asset" >&2
+    exit 1
+  fi
+done
+for asset in "$desktop_x64" "$desktop_arm64"; do
+  download_asset "$asset"
+done
+
+cli_x64_hash="$(nix hash file --sri "$tmp_dir/$cli_x64")"
+cli_arm64_hash="$(nix hash file --sri "$tmp_dir/$cli_arm64")"
+desktop_x64_hash="$(nix hash file --sri "$tmp_dir/$desktop_x64")"
+desktop_arm64_hash="$(nix hash file --sri "$tmp_dir/$desktop_arm64")"
+
+metadata_tmp="$(mktemp "$repo_dir/sources.json.XXXXXX")"
+jq -n \
+  --arg version "$version" \
+  --arg cli_x64 "$cli_x64" --arg cli_x64_hash "$cli_x64_hash" \
+  --arg cli_arm64 "$cli_arm64" --arg cli_arm64_hash "$cli_arm64_hash" \
+  --arg desktop_x64 "$desktop_x64" --arg desktop_x64_hash "$desktop_x64_hash" \
+  --arg desktop_arm64 "$desktop_arm64" --arg desktop_arm64_hash "$desktop_arm64_hash" \
+  '{
+    version: $version,
+    cli: {
+      "x86_64-linux": { asset: $cli_x64, hash: $cli_x64_hash },
+      "aarch64-linux": { asset: $cli_arm64, hash: $cli_arm64_hash }
+    },
+    desktop: {
+      "x86_64-linux": { asset: $desktop_x64, hash: $desktop_x64_hash },
+      "aarch64-linux": { asset: $desktop_arm64, hash: $desktop_arm64_hash }
+    }
+  }' > "$metadata_tmp"
+jq -e '.version and (.cli | length == 2) and (.desktop | length == 2)' "$metadata_tmp" > /dev/null
+mv -- "$metadata_tmp" "$repo_dir/sources.json"
+metadata_tmp=""
+
+printf 'Updated T3 Code v%s -> v%s (upstream CLI SHA256SUMS verified):\n' "$old_version" "$version"
+printf '  %s\n' "$cli_x64" "$cli_arm64" "$desktop_x64" "$desktop_arm64"
