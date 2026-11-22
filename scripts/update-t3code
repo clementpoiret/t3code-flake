@@ -148,5 +148,9 @@ jq -e '.version and (.cli | length == 2) and (.desktop | length == 2)' "$metadat
 mv -- "$metadata_tmp" "$repo_dir/sources.json"
 metadata_tmp=""
 
+# Runtime tools (agent and forge CLIs) come from nixpkgs-unstable; refresh them with each release.
+nix --extra-experimental-features 'nix-command flakes' flake update nixpkgs-unstable
+
 printf 'Updated T3 Code v%s -> v%s (upstream CLI SHA256SUMS verified):\n' "$old_version" "$version"
 printf '  %s\n' "$cli_x64" "$cli_arm64" "$desktop_x64" "$desktop_arm64"
+printf 'Updated the nixpkgs-unstable lock for the runtime tools.\n'

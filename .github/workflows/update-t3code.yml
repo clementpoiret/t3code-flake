@@ -36,23 +36,27 @@ jobs:
           old="$(jq -r .version sources.json)"
           nix develop --command ./scripts/update-t3code
           new="$(jq -r .version sources.json)"
-          changed_files="$(git diff --name-only)"
-          if [[ -n "$changed_files" && "$changed_files" != sources.json ]]; then
-            printf 'updater changed unexpected files: %s\n' "$changed_files" >&2
+          # A release update rewrites sources.json and may move the nixpkgs-unstable lock.
+          unexpected="$(git diff --name-only -- . ':!sources.json' ':!flake.lock')"
+          if [[ -n "$unexpected" ]]; then
+            printf 'updater changed unexpected files: %s\n' "$unexpected" >&2
             exit 1
           fi
-          if [[ -z "$changed_files" ]]; then
+          if git diff --quiet -- sources.json; then
             changed=false
+            # Without a new release the lock must stay as it is.
+            git diff --exit-code -- flake.lock
           else
             changed=true
           fi
-          git diff --exit-code -- flake.lock
           printf 'changed=%s\nold=%s\nnew=%s\nbase_sha=%s\n' "$changed" "$old" "$new" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.update.outputs.changed == 'true'
         with:
           name: t3code-sources
-          path: sources.json
+          path: |
+            sources.json
+            flake.lock
           retention-days: 1
 
   validate:
@@ -81,7 +85,6 @@ jobs:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Check and build release
         run: |
-          git diff --exit-code -- flake.lock
           nix flake check --system "${{ matrix.system }}"
           nix build .#t3code
           HOME="$(mktemp -d)"
@@ -113,9 +116,9 @@ jobs:
           OLD_VERSION: ${{ needs.update.outputs.old }}
           NEW_VERSION: ${{ needs.update.outputs.new }}
         run: |
-          changed_files="$(git status --porcelain)"
-          if [[ "$changed_files" != " M sources.json" ]]; then
-            printf 'unexpected changes to publish:\n%s\n' "$changed_files" >&2
+          unexpected="$(git status --porcelain -- . ':!sources.json' ':!flake.lock')"
+          if [[ -n "$unexpected" ]] || git diff --quiet -- sources.json; then
+            printf 'unexpected changes to publish:\n%s\n' "$(git status --porcelain)" >&2
             exit 1
           fi
           git config user.name "github-actions[bot]"
@@ -127,7 +130,8 @@ jobs:
           Upstream release: https://github.com/pingdotgg/t3code/releases/tag/v$NEW_VERSION
 
           The upstream SHA256SUMS entries for both CLI archives were verified before calculating Nix hashes.
+          The nixpkgs-unstable lock that provides the runtime tools was refreshed.
           Validated natively on x86_64-linux and aarch64-linux: nix flake check, nix build .#t3code, t3 --version, t3 --help, and nix build .#t3code-desktop." \
-            -- sources.json
+            -- sources.json flake.lock
           # Not forced: if main moved after the check above, this fails and the next run retries.
           git push origin HEAD:main

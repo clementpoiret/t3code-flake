@@ -8,19 +8,35 @@
   sources,
   codex,
   claude-code,
+  opencode,
+  pi-coding-agent,
+  grok-cli,
+  kiro-cli,
+  antigravity-cli,
   git,
   jujutsu,
   gh,
   glab,
+  tea,
+  forgejo-cli,
   azure-cli,
   azure-cli-extensions,
+  cloudflared,
   enableCodex ? true,
   enableClaude ? false,
+  enableOpenCode ? false,
+  enablePi ? false,
+  enableGrok ? false,
+  enableKiro ? false,
+  enableAntigravity ? false,
   enableGit ? true,
   enableJujutsu ? false,
   enableGitHub ? true,
   enableGitLab ? true,
+  enableForgejo ? false,
   enableAzureDevOps ? false,
+  enableCloudflared ? false,
+  extraRuntimeTools ? [ ],
 }:
 let
   system = stdenv.hostPlatform.system;
@@ -30,19 +46,35 @@ let
       lib
       codex
       claude-code
+      opencode
+      pi-coding-agent
+      grok-cli
+      kiro-cli
+      antigravity-cli
       git
       jujutsu
       gh
       glab
+      tea
+      forgejo-cli
       azure-cli
       azure-cli-extensions
+      cloudflared
       enableCodex
       enableClaude
+      enableOpenCode
+      enablePi
+      enableGrok
+      enableKiro
+      enableAntigravity
       enableGit
       enableJujutsu
       enableGitHub
       enableGitLab
+      enableForgejo
       enableAzureDevOps
+      enableCloudflared
+      extraRuntimeTools
       ;
   };
 in

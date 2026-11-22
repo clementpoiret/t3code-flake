@@ -5,7 +5,8 @@ self-contained CLI, bundled web client, and native modules. `t3code-desktop` wra
 its desktop entry and icons. Both packages support `x86_64-linux` and `aarch64-linux`.
 
 The only release metadata is [sources.json](./sources.json). CLI archives are checked against upstream `SHA256SUMS`
-before their Nix hashes are recorded. `flake.lock` pins Nixpkgs separately from T3 Code releases.
+before their Nix hashes are recorded. `flake.lock` pins two Nixpkgs inputs: stable `nixpkgs` builds the packages, and `nixpkgs-unstable` provides the runtime
+tools and is refreshed with each T3 Code release.
 
 ## Install
 
@@ -54,18 +55,32 @@ installing, run `nix run github:OWNER/REPOSITORY -- --version`.
 The `/bin/t3` launcher adds selected programs to its `PATH`. The desktop launcher uses the same options. Authentication
 and provider settings stay in your user environment.
 
-The direct flake packages allow Nixpkgs' unfree `claude-code` only when `enableClaude = true`; if you use the overlay
-with your own Nixpkgs package set, that package set must also permit `claude-code`.
+The tools come from this flake's `nixpkgs-unstable` input rather than from the Nixpkgs that builds T3 Code, because
+agent CLIs release far more often than a stable channel follows. To use your own Nixpkgs for them instead, set
+`inputs.t3code.inputs.nixpkgs-unstable.follows = "nixpkgs";`, or replace a single tool with any package, including one
+from another flake, for example `t3code.override { codex = inputs.other.packages.${pkgs.system}.codex; }`.
 
-| Override            | Default | Program                              |
-| ------------------- | ------- | ------------------------------------ |
-| `enableCodex`       | `true`  | `codex`                              |
-| `enableClaude`      | `false` | `claude-code`                        |
-| `enableGit`         | `true`  | `git`                                |
-| `enableJujutsu`     | `false` | `jj` from `jujutsu`                  |
-| `enableGitHub`      | `true`  | `gh`                                 |
-| `enableGitLab`      | `true`  | `glab`                               |
-| `enableAzureDevOps` | `false` | `az` with the Azure DevOps extension |
+The direct flake packages allow the unfree `claude-code`, `kiro-cli`, and `antigravity-cli` only when their option is
+enabled. With the overlay, the tools are evaluated under your package set's Nixpkgs `config`, so it must permit the
+unfree tools you enable.
+
+| Override            | Default | Program                                  |
+| ------------------- | ------- | ---------------------------------------- |
+| `enableCodex`       | `true`  | `codex`                                  |
+| `enableClaude`      | `false` | `claude` from `claude-code` (unfree)     |
+| `enableOpenCode`    | `false` | `opencode`                               |
+| `enablePi`          | `false` | `pi` from `pi-coding-agent`              |
+| `enableGrok`        | `false` | `grok` from `grok-cli`                   |
+| `enableKiro`        | `false` | `kiro-cli` (unfree)                      |
+| `enableAntigravity` | `false` | `agy` from `antigravity-cli` (unfree)    |
+| `enableGit`         | `true`  | `git`                                    |
+| `enableJujutsu`     | `false` | `jj` from `jujutsu`                      |
+| `enableGitHub`      | `true`  | `gh`                                     |
+| `enableGitLab`      | `true`  | `glab`                                   |
+| `enableForgejo`     | `false` | `tea` and `fj` from `forgejo-cli`        |
+| `enableAzureDevOps` | `false` | `az` with the Azure DevOps extension     |
+| `enableCloudflared` | `false` | `cloudflared`, T3 Code's relay client    |
+| `extraRuntimeTools` | `[ ]`   | any further packages to add to `PATH`    |
 
 For desktop use, install `packages.${pkgs.system}.t3code-desktop` or run
 `nix run github:OWNER/REPOSITORY#t3code-desktop`. Its app launcher is `$out/bin/t3code-desktop`; the upstream desktop
@@ -77,9 +92,10 @@ in the same way as the CLI.
 
 The scheduled [update workflow](./.github/workflows/update-t3code.yml) checks GitHub's latest stable release daily at
 05:17 UTC. On a new version it verifies that all four Linux assets and `SHA256SUMS` exist, downloads both CLI archives,
-checks each against `SHA256SUMS`, hashes the two AppImages, and atomically replaces `sources.json`. It leaves
-`flake.lock` untouched. Native x64 and ARM64 jobs run flake checks, CLI smoke tests, and desktop builds; only when both
-pass is the new `sources.json` committed and pushed directly to `main`, with no pull request. The push is refused if
+checks each against `SHA256SUMS`, hashes the two AppImages, and atomically replaces `sources.json`. It then refreshes
+the `nixpkgs-unstable` entry of `flake.lock` so the runtime tools keep pace with the release; the stable `nixpkgs` entry
+is left alone. Native x64 and ARM64 jobs run flake checks, CLI smoke tests, and desktop builds; only when both pass are
+`sources.json` and `flake.lock` committed and pushed directly to `main`, with no pull request. The push is refused if
 `main` moved after validation, and the next run retries.
 
 To run maintenance locally:
@@ -91,8 +107,8 @@ nix flake check
 ```
 
 Pass an exact stable version such as `./scripts/update-t3code 0.1.11` to target that release. A version already recorded
-in `sources.json` is a no-op. Update Nixpkgs independently with `nix flake update nixpkgs`; a T3 Code update does not
-change the lock file.
+in `sources.json` is a no-op and leaves `flake.lock` alone. Update stable Nixpkgs independently with
+`nix flake update nixpkgs`, or refresh the runtime tools between releases with `nix flake update nixpkgs-unstable`.
 
 Upstream provides `t3 update`, which downloads a mutable runtime under the user's T3 home and repoints launchers owned
 by upstream's installer. The Nix store package is immutable, so update this flake's input after the update lands on

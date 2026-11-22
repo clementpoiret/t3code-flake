@@ -1,10 +1,18 @@
 {
   description = "T3 Code official Linux release packages";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # Agent and forge CLIs move fast, so the runtime tools come from unstable.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
 
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      nixpkgs-unstable,
+    }:
     let
       systems = [
         "x86_64-linux"
@@ -16,16 +24,53 @@
         system:
         import nixpkgs {
           inherit system;
-          # Claude Code is unfree; only permit it when an override selects it.
-          config.allowUnfreePredicate = pkg: nixpkgs.lib.getName pkg == "claude-code";
+          # These tools are unfree; only permit them when an override selects them.
+          config.allowUnfreePredicate =
+            pkg:
+            builtins.elem (nixpkgs.lib.getName pkg) [
+              "claude-code"
+              "kiro-cli"
+              "kiro-cli-unwrapped"
+              "antigravity-cli"
+            ];
           overlays = [ self.overlays.default ];
         };
     in
     {
-      overlays.default = final: prev: {
-        t3code = final.callPackage ./package.nix { inherit sources; };
-        t3code-desktop = final.callPackage ./desktop.nix { inherit sources; };
-      };
+      overlays.default =
+        final: prev:
+        let
+          # Runtime tools come from nixpkgs-unstable under the consumer's Nixpkgs config.
+          unstable = import nixpkgs-unstable {
+            inherit (final.stdenv.hostPlatform) system;
+            inherit (final) config;
+          };
+          args = {
+            inherit sources;
+            inherit (unstable)
+              codex
+              claude-code
+              opencode
+              pi-coding-agent
+              grok-cli
+              kiro-cli
+              antigravity-cli
+              git
+              jujutsu
+              gh
+              glab
+              tea
+              forgejo-cli
+              azure-cli
+              azure-cli-extensions
+              cloudflared
+              ;
+          };
+        in
+        {
+          t3code = final.callPackage ./package.nix args;
+          t3code-desktop = final.callPackage ./desktop.nix args;
+        };
 
       packages = forAllSystems (
         system:
