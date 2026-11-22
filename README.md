@@ -89,7 +89,7 @@ nix develop
 nix flake check
 ```
 
-Pass an exact stable version such as `./scripts/update-t3code 0.0.42` to target that release. A version already recorded
+Pass an exact stable version such as `./scripts/update-t3code 0.1.11` to target that release. A version already recorded
 in `sources.json` is a no-op. Update Nixpkgs independently with `nix flake update nixpkgs`; a T3 Code update does not
 change the lock file.
 
@@ -121,8 +121,10 @@ still build the desktop package.
 
 ## Packaging notes
 
-The v0.0.42 CLI executable is at the top level of each `t3-<version>-linux-*.tar.gz` archive. The package preserves the
+The CLI executable is at the top level of each `t3-<version>-linux-*.tar.gz` archive. The package preserves the
 adjacent web client and native modules under `$out/libexec/t3code`, and its `$out/bin/t3` wrapper adds optional tools to
 `PATH`. The executable needs a Nix store ELF interpreter and the GCC runtime's `libatomic` and `libstdc++`;
-`autoPatchelfHook` patches the glibc executables and modules. Stripping is disabled because Node's single executable
+`autoPatchelfHook` patches the glibc executables and modules, resolving bundled sibling libraries (such as
+transcribe-cpp's `libggml-*.so`) and its Vulkan backend's `libvulkan` from `vulkan-loader`. Since v0.1.x upstream
+names the AppImages `T3-Code-<arch>.AppImage`; the updater also accepts the older versioned names. Stripping is disabled because Node's single executable
 application embeds its payload in an ELF note that `strip -S` damages.

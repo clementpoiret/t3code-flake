@@ -81,8 +81,23 @@ download_asset() {
 
 cli_x64="t3-$version-linux-x64.tar.gz"
 cli_arm64="t3-$version-linux-arm64.tar.gz"
-desktop_x64="T3-Code-$version-x86_64.AppImage"
-desktop_arm64="T3-Code-$version-arm64.AppImage"
+
+has_asset() {
+  jq -e --arg name "$1" 'any(.assets[]; .name == $name)' <<< "$release_json" > /dev/null
+}
+
+# Since v0.1.x upstream publishes updatable AppImages without a version in
+# their name (T3-Code-<arch>.AppImage); older releases carry the version.
+desktop_asset() {
+  local arch="$1"
+  if has_asset "T3-Code-$arch.AppImage"; then
+    printf 'T3-Code-%s.AppImage\n' "$arch"
+  else
+    printf 'T3-Code-%s-%s.AppImage\n' "$version" "$arch"
+  fi
+}
+desktop_x64="$(desktop_asset x86_64)"
+desktop_arm64="$(desktop_asset arm64)"
 
 # Check the entire asset set before any downloads or repository writes.
 for asset in "$cli_x64" "$cli_arm64" SHA256SUMS "$desktop_x64" "$desktop_arm64"; do

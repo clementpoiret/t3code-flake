@@ -60,8 +60,10 @@ appimageTools.wrapType2 {
   extraInstallCommands = ''
     mkdir -p "$out/share/applications" "$out/share/icons"
     cp ${extracted}/t3code.desktop "$out/share/applications/t3code.desktop"
-    substituteInPlace "$out/share/applications/t3code.desktop" \
-      --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3code-desktop %U'
+    # Upstream has shipped both 'Exec=AppRun --no-sandbox %U' and 'Exec=AppRun %U'.
+    sed -i -E 's|^Exec=AppRun( --no-sandbox)? %U$|Exec=t3code-desktop %U|' \
+      "$out/share/applications/t3code.desktop"
+    grep -Fxq 'Exec=t3code-desktop %U' "$out/share/applications/t3code.desktop"
     cp -R ${extracted}/usr/share/icons/hicolor "$out/share/icons/"
 
     mv "$out/bin/t3code-desktop" "$out/bin/t3code-desktop-unwrapped"

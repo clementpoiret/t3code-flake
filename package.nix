@@ -4,6 +4,7 @@
   fetchurl,
   autoPatchelfHook,
   makeBinaryWrapper,
+  vulkan-loader,
   sources,
   codex,
   claude-code,
@@ -59,7 +60,11 @@ stdenv.mkDerivation {
     autoPatchelfHook
     makeBinaryWrapper
   ];
-  buildInputs = [ stdenv.cc.cc.lib ];
+  buildInputs = [
+    stdenv.cc.cc.lib
+    # Needed by the bundled transcribe-cpp Vulkan backend.
+    vulkan-loader
+  ];
 
   dontBuild = true;
   dontAutoPatchelf = true;
@@ -77,12 +82,18 @@ stdenv.mkDerivation {
 
   postFixup = ''
     # The archive also has musl modules, which are not used on NixOS.
-    autoPatchelf "$out/libexec/t3code/t3"
-    autoPatchelf "$out/libexec/t3code/resource-monitor"
+    nativeModules=()
     while IFS= read -r -d ''' file; do
-      autoPatchelf "$file"
+      nativeModules+=("$file")
+      # Bundled libraries (e.g. libggml-*.so) link against their siblings.
+      addAutoPatchelfSearchPath --no-recurse "$(dirname "$file")"
     done < <(find "$out/libexec/t3code/node_modules" -type f \
       \( -name '*.node' -o -name '*.so' \) ! -path '*musl*' -print0)
+    autoPatchelf "$out/libexec/t3code/t3"
+    autoPatchelf "$out/libexec/t3code/resource-monitor"
+    for file in "''${nativeModules[@]}"; do
+      autoPatchelf "$file"
+    done
   '';
 
   meta = {
