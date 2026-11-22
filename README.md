@@ -78,8 +78,9 @@ in the same way as the CLI.
 The scheduled [update workflow](./.github/workflows/update-t3code.yml) checks GitHub's latest stable release daily at
 05:17 UTC. On a new version it verifies that all four Linux assets and `SHA256SUMS` exist, downloads both CLI archives,
 checks each against `SHA256SUMS`, hashes the two AppImages, and atomically replaces `sources.json`. It leaves
-`flake.lock` untouched. Native x64 and ARM64 jobs run flake checks, CLI smoke tests, and desktop builds before a PR is
-opened or updated on `automation/update-t3code`.
+`flake.lock` untouched. Native x64 and ARM64 jobs run flake checks, CLI smoke tests, and desktop builds; only when both
+pass is the new `sources.json` committed and pushed directly to `main`, with no pull request. The push is refused if
+`main` moved after validation, and the next run retries.
 
 To run maintenance locally:
 
@@ -94,8 +95,8 @@ in `sources.json` is a no-op. Update Nixpkgs independently with `nix flake updat
 change the lock file.
 
 Upstream provides `t3 update`, which downloads a mutable runtime under the user's T3 home and repoints launchers owned
-by upstream's installer. The Nix store package is immutable, so update this flake's input after its release PR is merged
-instead. We found no documented upstream switch to disable the CLI self-update command and do not patch it.
+by upstream's installer. The Nix store package is immutable, so update this flake's input after the update lands on
+`main` instead. We found no documented upstream switch to disable the CLI self-update command and do not patch it.
 
 Upstream's `t3 service install` also downloads a standalone archive into `~/.t3/runtime/versions` and creates a systemd
 user unit on Linux. That service is separate from this Nix package and can enable user lingering. Its downloaded
@@ -105,13 +106,14 @@ declarative user unit that executes the packaged `$out/bin/t3` with your chosen 
 
 ## GitHub setup
 
-Enable
-[**Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
-The update workflow uses only `GITHUB_TOKEN`; its proposal job receives `contents: write` and `pull-requests: write`,
-while download and test jobs use read access.
-[GitHub may leave CI on a `GITHUB_TOKEN`-created PR waiting for approval](https://docs.github.com/en/actions/concepts/security/github_token),
-so the update workflow validates both architectures before creating the PR. If branch protection requires the separate
-PR CI check, a repository writer can approve that run from the PR. No personal access token is required.
+The update workflow uses only `GITHUB_TOKEN`; its publish job receives `contents: write` to push the update commit to
+`main`, while download and test jobs use read access. No personal access token is required.
+
+`main` must accept direct pushes from GitHub Actions: a branch protection rule or ruleset that requires pull requests
+or status checks will reject the push unless it lets `github-actions[bot]` bypass it.
+[Pushes made with `GITHUB_TOKEN` do not trigger other workflows](https://docs.github.com/en/actions/concepts/security/github_token),
+so the normal CI workflow does not run on update commits; the update workflow validates both architectures itself
+before pushing.
 
 The normal [CI workflow](./.github/workflows/ci.yml) runs on pushes to `main` and pull requests using native
 `ubuntu-24.04` and `ubuntu-24.04-arm` runners.
