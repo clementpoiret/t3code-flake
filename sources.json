@@ -1,23 +1,23 @@
 {
-  "version": "0.1.11",
+  "version": "0.1.12",
   "cli": {
     "x86_64-linux": {
-      "asset": "t3-0.1.11-linux-x64.tar.gz",
-      "hash": "sha256-K2kcB/W8ta3qSoY9UySq59shvW2CKAzsd4eDbcqgE+E="
+      "asset": "t3-0.1.12-linux-x64.tar.gz",
+      "hash": "sha256-m6PbRuNVT7mXD9Xt6egjwvbW9nY/QDQL1MjvawlQHFQ="
     },
     "aarch64-linux": {
-      "asset": "t3-0.1.11-linux-arm64.tar.gz",
-      "hash": "sha256-fZClrwMv4JiKYWQD4PUabLaO/37XqEvECZnMOZff/XE="
+      "asset": "t3-0.1.12-linux-arm64.tar.gz",
+      "hash": "sha256-Kc+6sZEXqkNvFwA4Kvuc/l1+9HYJyrupNWJxoLylrZg="
     }
   },
   "desktop": {
     "x86_64-linux": {
       "asset": "T3-Code-x86_64.AppImage",
-      "hash": "sha256-i6oGp7uqP3KdaUZvshHtcAbWpuTYALns2s2DH9FoaxQ="
+      "hash": "sha256-ZrkVUVcd9tKbVctZApXt9BHP+WyVqP6z9Bw8pZXXIuI="
     },
     "aarch64-linux": {
       "asset": "T3-Code-arm64.AppImage",
-      "hash": "sha256-Pa+IzPF1SLwp/4pueOIl3vBpa0RJjF9QBXBI4YLxRiY="
+      "hash": "sha256-agBNXaVi7CXRR930rld+1m49BStolU5FWheCl6g72Po="
     }
   }
 }
